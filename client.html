@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<script src="/socket.io/socket.io.js"></script>
+		<!-- <script src=""></script> -->
+		<script>
+			//xor
+			var Xorc = function(salt){
+    			var randomMax = 100,
+        			randomMin = -100;
+    
+    			var saltInt = parseInt(salt);
+    				if ( salt ) {
+        				if ( !saltInt ) {
+            				throw new Error('Salt is not a Number');
+        				}
+        				this.salt = saltInt;
+    				}
+    				else {
+        				this.salt = Math.round(Math.random()*(randomMax-randomMin)+randomMin);
+    				}
+			}
+
+			Xorc.prototype.encrypt = function(str) {
+    			var result = '';
+    				for (var i=0; i<str.length; i++) {
+        				result += String.fromCharCode( this.salt ^ str.charCodeAt(i) );
+   					}
+    			return result;
+			}
+
+			Xorc.prototype.decrypt = function(hash) {
+    		var result = '';
+   	 			for (var i=0; i<hash.length; i++) {
+        			result += String.fromCharCode( this.salt ^ hash.charCodeAt(i) );
+    			}
+    		return result;
+			}
+			//end of xor
+				
+			var p; //modulus
+			var g; //base
+			var a; //local secret
+			var A; //client's public key
+			var B; //server's public key
+			var S; // secret key
+			var xor;
+			
+			var socketio = io.connect("127.0.0.1:7000"); //create a socket connection to the servers socket.io module
+			
+			function randomInt (min,max){ //returns a random integer between min and max
+				return Math.floor(Math.random() * (max - min + 1)) + min;
+			}
+			
+			a=randomInt(5,20); //random local secret
+			
+			socketio.emit("request", {message: "keys"}); //request for keys
+			socketio.on("requestResponse", function(data){
+				p=data.p; //save p
+				g=data.g; //and g
+				A=Math.pow(g,a)%p; //setting client's public key
+				socketio.emit("exchange", {"A":A}); //sending client's public key
+			});
+			
+			socketio.on("exchangeResponse", function(data){
+				B=data.B;
+				S = Math.pow(B,a)%p; //setting secret key
+				xor = new Xorc(S); //new xor encryption with key=S
+				socketio.emit("encryptionType", {"encryption": "xor"}); //sending encryption type
+			});
+			
+			function sendMessage(){ //sending message to server
+				var msg = document.getElementById("message_input").value;
+				var enMsg = xor.encrypt(msg);//encrypted message
+				var coMsg = btoa(enMsg);//encoded encrypted message
+				socketio.emit("message_to_server", JSON.stringify({"message" : coMsg, "from":"John"}));
+			};
+			
+			socketio.on("message_to_client", function(data){
+				document.getElementById("chatlog").innerHTML = ("<hr/>" +
+				data['message'] + document.getElementById("chatlog").innerHTML);//display message
+			});
+		
+		</script>
+	</head>
+	<body>
+		<input type="text" id="message_input"/>
+		<button onclick="sendMessage()">Send</button>
+		<div id="chatlog"></div>
+	</body>
+</html>
